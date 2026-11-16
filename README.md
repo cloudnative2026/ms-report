@@ -1,6 +1,7 @@
 # ms-report
 
-KPIs / analitica de Pedidos360. Java 21 / Spring Boot, PostgreSQL y Liquibase.
+KPIs / analitica de Pedidos360. Java 21 / Spring Boot y Liquibase. En produccion usa el RDS MySQL compartido (base `report_db`,
+creada al arrancar); el compose general usa PostgreSQL.
 
 Consume `orders.events` (publicado por ms-orders) y mantiene una proyeccion por pedido
 (`order_fact`). Tras 3 reintentos el mensaje va a `orders.events.ms-report.DLT`.
@@ -9,11 +10,11 @@ Los mensajes repetidos se ignoran por `eventId`.
 ## Ejecutar
 
 ```sh
-docker compose up -d          # PostgreSQL en 5435
+docker compose up -d          # MySQL en 3306
 ./mvnw spring-boot:run        # Kafka en localhost:9092 (compose general)
 ```
 
-Configuracion: DB_HOST, DB_PORT, DB_NAME, DB_USERNAME, DB_PASSWORD, SPRING_KAFKA_BOOTSTRAP_SERVERS,
+Configuracion: DB_HOST, DB_PORT, DB_USERNAME, DB_PASSWORD, SPRING_KAFKA_BOOTSTRAP_SERVERS,
 SERVER_PORT, ENTRA_ISSUER, ENTRA_AUDIENCE.
 
 ## API (solo lectura, rol Admin)

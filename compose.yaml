@@ -1,13 +1,14 @@
 services:
-  postgres:
-    image: postgres:16-alpine
+  mysql:
+    image: mysql:8.4
     environment:
-      POSTGRES_DB: mydatabase
-      POSTGRES_PASSWORD: secret
-      POSTGRES_USER: myuser
+      MYSQL_DATABASE: report_db
+      MYSQL_USER: myuser
+      MYSQL_PASSWORD: secret
+      MYSQL_ROOT_PASSWORD: secret
     ports:
-      - '5435:5432'
+      - '3306:3306'
     volumes:
-      - report-data:/var/lib/postgresql/data
+      - report-data:/var/lib/mysql
 volumes:
   report-data:

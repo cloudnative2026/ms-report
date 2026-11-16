@@ -1,0 +1,4 @@
+databaseChangeLog:
+  - include:
+      file: db/changelog/changes/001-create-report-tables.yaml
+      relativeToChangelogFile: false

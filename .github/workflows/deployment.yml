@@ -1,0 +1,117 @@
+name: MS Report Deploy
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "Dockerfile"
+      - "src/**"
+      - "pom.xml"
+      - ".github/workflows/**"
+  workflow_dispatch:
+
+env:
+  CONTAINER_NAME: ms-report
+  HOST_PORT: 8084
+  CONTAINER_PORT: 8084
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Build JAR
+        run: |
+          chmod +x ./mvnw
+          ./mvnw clean package
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build Docker image
+        run: |
+          docker build -t ms-report:latest .
+          docker tag ms-report:latest \
+            ${{ secrets.ECR_REPO_URL_MS_REPORT }}:latest
+
+      - name: Push image to ECR
+        run: |
+          docker push \
+            ${{ secrets.ECR_REPO_URL_MS_REPORT }}:latest
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+          ECR_REPO: ${{ secrets.ECR_REPO_URL_MS_REPORT }}
+          DB_HOST: ${{ secrets.REPORT_DB_HOST }}
+          DB_PORT: ${{ secrets.REPORT_DB_PORT }}
+          DB_USERNAME: ${{ secrets.REPORT_DB_USERNAME }}
+          DB_PASSWORD: ${{ secrets.REPORT_DB_PASSWORD }}
+          KAFKA_BOOTSTRAP_SERVERS: ${{ secrets.KAFKA_BOOTSTRAP_SERVERS }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+
+          envs: AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_SESSION_TOKEN,AWS_REGION,ECR_REGISTRY,ECR_REPO,DB_HOST,DB_PORT,DB_USERNAME,DB_PASSWORD,KAFKA_BOOTSTRAP_SERVERS
+
+          script: |
+            set -e
+
+            echo "Logging into ECR..."
+
+            aws ecr get-login-password \
+              --region "$AWS_REGION" \
+              | docker login \
+                --username AWS \
+                --password-stdin "$ECR_REGISTRY"
+
+            echo "Pulling ms-report..."
+
+            docker pull "$ECR_REPO:latest"
+
+            echo "Stopping previous container..."
+
+            docker stop ms-report || true
+            docker rm ms-report || true
+
+            echo "Starting ms-report..."
+
+            docker run -d \
+            --name ms-report \
+            --restart unless-stopped \
+            -p 8084:8084 \
+            -e DB_HOST="$DB_HOST" \
+            -e DB_PORT="$DB_PORT" \
+            -e DB_USERNAME="$DB_USERNAME" \
+            -e DB_PASSWORD="$DB_PASSWORD" \
+            -e SPRING_KAFKA_BOOTSTRAP_SERVERS="$KAFKA_BOOTSTRAP_SERVERS" \
+            "$ECR_REPO:latest"
+
+            echo "Deployment completed."
+
+            docker ps
